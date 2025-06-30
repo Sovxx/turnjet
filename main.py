@@ -72,7 +72,7 @@ def check_aircraft():
             lat = ac.get("lat")
             lon = ac.get("lon")
             track = (
-                None if (ac.get("track") is None) else int(round(ac.get("track")))
+                None if (ac.get("track") is None) else ac.get("track")
             )  # aircraft own track in degrees
             
             if alt:
@@ -152,7 +152,7 @@ def process_aircraft_turns(records_file='records.csv', turns_file='turns.csv'):
     
     # Écrire les virages dans turns.csv
     if turns_data:
-        with open(turns_file, 'w', newline='') as f:
+        with open(turns_file, 'a', newline='') as f:
             writer = csv.writer(f)
             for turn in turns_data:
                 writer.writerow(turn)

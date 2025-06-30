@@ -100,9 +100,6 @@ def create_map_with_points():
             popup=f"Avion: {turn['callsign']}<br>Immat: {turn['registration']}<br>Heure: {turn['timestamp']}",
             tooltip=f"Avion: {turn['callsign']}",
             color='red',
-            fill=True,
-            fillColor='red',
-            fillOpacity=0.7
         ).add_to(m)
 
     # Ajouter une légende
