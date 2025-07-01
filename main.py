@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timedelta
 import logging
 import matplotlib.pyplot as plt
+import os
 
 config = configparser.ConfigParser()
 config.read("config.ini")
@@ -28,6 +29,10 @@ MIN_ALT = int(config["altitude"]["min_alt"])
 MAX_ALT = int(config["altitude"]["max_alt"])
 
 CSV_FILE = "records.csv"
+PLOTS_DIR = "aircraft_plots"
+
+# Créer le dossier pour les graphiques s'il n'existe pas
+os.makedirs(PLOTS_DIR, exist_ok=True)
 
 API_URL = f"https://api.adsb.lol/v2/lat/{LAT}/lon/{LON}/dist/{RADIUS}"
 """
@@ -103,8 +108,6 @@ def check_aircraft():
         logging.error("API error: %s", e)
         return False
 
-
-
 def process_aircraft_turns(records_file='records.csv', turns_file='turns.csv'):
     """
     Analyse les données de tracking d'avions pour détecter les changements de direction
@@ -171,6 +174,75 @@ def process_aircraft_turns(records_file='records.csv', turns_file='turns.csv'):
     print(f"Nombre de lignes supprimées: {len(df) - len(df_cleaned)}")
     print(f"Nombre de lignes restantes: {len(df_cleaned)}")
 
+def plot_aircraft_tracks(hex_code, tracks, tracks_unwrapped_degrees, transitions, aircraft_data):
+    """
+    Génère un graphique PNG pour un avion donné montrant les tracks originaux,
+    les tracks unwrappés et les points de transition détectés.
+    
+    Args:
+        hex_code (str): Code hexadécimal de l'avion
+        tracks (array): Valeurs de track originales
+        tracks_unwrapped_degrees (array): Valeurs de track unwrappées
+        transitions (list): Liste des tuples (i, j) de transitions
+        aircraft_data (DataFrame): Données complètes de l'avion
+    """
+    # Créer une figure avec 2 sous-graphiques
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+    
+    # Graphique 1: Tracks originaux
+    ax1.plot(range(len(tracks)), tracks, 'b-o', markersize=4, linewidth=1, label='Track original')
+    ax1.set_title(f'Aircraft {hex_code} - Track Original (0-360°)')
+    ax1.set_xlabel('Point index')
+    ax1.set_ylabel('Track (degrees)')
+    ax1.set_ylim(0, 360)
+    ax1.grid(True, alpha=0.3)
+    ax1.legend()
+    
+    # Marquer les transitions sur le graphique original
+    for i, j in transitions:
+        if i < len(tracks) and j < len(tracks):
+            ax1.axvline(x=i, color='red', linestyle='--', alpha=0.7, label='Transition' if (i, j) == transitions[0] else "")
+            ax1.axvline(x=j, color='red', linestyle='--', alpha=0.7)
+    
+    # Graphique 2: Tracks unwrappés
+    ax2.plot(range(len(tracks_unwrapped_degrees)), tracks_unwrapped_degrees, 'g-o', markersize=4, linewidth=1, label='Track unwrapped')
+    ax2.set_title(f'Aircraft {hex_code} - Track Unwrapped')
+    ax2.set_xlabel('Point index')
+    ax2.set_ylabel('Track unwrapped (degrees)')
+    ax2.grid(True, alpha=0.3)
+    ax2.legend()
+    
+    # Marquer les transitions sur le graphique unwrappé
+    for i, j in transitions:
+        if i < len(tracks_unwrapped_degrees) and j < len(tracks_unwrapped_degrees):
+            ax2.axvline(x=i, color='red', linestyle='--', alpha=0.7, label='Transition' if (i, j) == transitions[0] else "")
+            ax2.axvline(x=j, color='red', linestyle='--', alpha=0.7)
+            
+            # Ajouter une annotation pour chaque transition
+            angle_diff = abs(tracks_unwrapped_degrees[j] - tracks_unwrapped_degrees[i])
+            mid_point = (i + j) / 2
+            ax2.annotate(f'Δ={angle_diff:.1f}°', 
+                        xy=(mid_point, tracks_unwrapped_degrees[int(mid_point)] if int(mid_point) < len(tracks_unwrapped_degrees) else tracks_unwrapped_degrees[-1]),
+                        xytext=(10, 10), textcoords='offset points',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.7),
+                        arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0'))
+    
+    # Ajouter des informations générales
+    callsign = aircraft_data['callsign'].iloc[0] if not aircraft_data['callsign'].isnull().all() else 'N/A'
+    regis = aircraft_data['regis'].iloc[0] if not aircraft_data['regis'].isnull().all() else 'N/A'
+    
+    fig.suptitle(f'Aircraft Analysis - {hex_code}\nCallsign: {callsign} | Registration: {regis}\nTransitions detected: {len(transitions)}', 
+                 fontsize=14, fontweight='bold')
+    
+    plt.tight_layout()
+    
+    # Sauvegarder le graphique
+    filename = os.path.join(PLOTS_DIR, f'{hex_code}.png')
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.close()  # Fermer la figure pour libérer la mémoire
+    
+    print(f"📊 Graphique sauvegardé: {filename}")
+
 def detect_turns(aircraft_data):
     """
     Détecte les changements de direction pour un avion donné en utilisant detect_paliers_avec_tuples.
@@ -208,6 +280,10 @@ def detect_turns(aircraft_data):
         print(f"{tracks=}")
         print(f"{tracks_unwrapped_degrees=}")
         print(f"{transitions=}")
+        
+        # Générer le graphique pour cet avion
+        hex_code = valid_track_data['hex'].iloc[0]
+        plot_aircraft_tracks(hex_code, tracks, tracks_unwrapped_degrees, transitions, valid_track_data)
         
         # Analyser chaque transition pour détecter les virages significatifs
         for i, j in transitions:
@@ -338,11 +414,10 @@ if __name__ == "__main__":
         f"📡 Monitoring airspace within {RADIUS} NM from https://www.openstreetmap.org/#map=9/{LAT}/{LON} between {MIN_ALT} and {MAX_ALT} ft"
     )
     print(f"Format: {header}")
+    print(f"📊 Graphiques sauvegardés dans le dossier: {PLOTS_DIR}")
 
     while True:
         check_aircraft()
         process_aircraft_turns()
         delay = 60
         time.sleep(delay)
-
-
