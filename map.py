@@ -97,7 +97,7 @@ def create_map_with_points():
         folium.CircleMarker(
             location=[turn['latitude'], turn['longitude']],
             radius=6,
-            popup=f"Avion: {turn['callsign']}<br>Immat: {turn['registration']}<br>Heure: {turn['timestamp']}",
+            popup=f"Avion: {turn['callsign']}<br>Immat: <a href=\"https://www.flightradar24.com/data/aircraft/{turn['registration']}\" target=\"_blank\" >{turn['registration']}</a><br>Heure: {turn['timestamp']}",
             tooltip=f"Avion: {turn['callsign']}",
             color='red',
         ).add_to(m)

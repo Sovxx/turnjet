@@ -5,7 +5,8 @@ import requests
 import csv
 import pandas as pd
 import numpy as np
-import ruptures as rpt
+from shapely.geometry import LineString, Point
+import math
 import time
 from datetime import datetime, timedelta
 import logging
@@ -238,10 +239,6 @@ def detect_turns(aircraft_data):
         
         # Traiter les transitions 
         for i, j in transitions:
-            # Calculer la différence angulaire entre les paliers
-            track_before_unwrapped = tracks_unwrapped_degrees[i]
-            track_after_unwrapped = tracks_unwrapped_degrees[j]
-            angle_diff = abs(track_after_unwrapped - track_before_unwrapped)
             
             # Estimer le point de virage (interpolation entre i et j)
             turn_point = estimate_turn_point_from_indices(valid_track_data, i, j)
@@ -382,31 +379,93 @@ def extract_transitions(segments):
 
 def estimate_turn_point_from_indices(aircraft_data, i, j):
     """
-    Estime le point de virage entre deux indices de données.
+    Estime le point de virage comme le point d'intersection entre :
+    - La demi-droite issue du point i dans la direction du track au point i
+    - La demi-droite issue du point j dans la direction opposée du track au point j
     
-    Args:
-        aircraft_data (DataFrame): Données de l'avion
-        i (int): Indice du dernier point avant le virage
-        j (int): Indice du premier point après le virage
-        
-    Returns:
-        dict: Point estimé du virage
+    Approximation plane (2D), avec Shapely.
     """
-    # Prendre les points correspondants aux indices
-    point_before = aircraft_data.iloc[i]
-    point_after = aircraft_data.iloc[j]
-    
-    # Interpoler entre ces deux points
+    point_i = aircraft_data.iloc[i]
+    point_j = aircraft_data.iloc[j]
+
+    lat1, lon1, track1 = point_i['lat'], point_i['lon'], point_i['track']
+    lat2, lon2, track2 = point_j['lat'], point_j['lon'], (point_j['track'] + 180) % 360
+
+    # Longueur arbitraire pour prolonger les demi-droites (en km)
+    extension_km = 100
+
+    def extend(lat, lon, track_deg, extension_km):
+        """
+        Prolonge un point (lat, lon) dans la direction `track_deg` sur `extension_km` kilomètres.
+        Corrige la latitude pour le facteur de conversion en longitude.
+        """
+        angle_rad = math.radians(track_deg)
+
+        # Conversion : 1° lat ≈ 111 km ; 1° lon ≈ 111 * cos(lat)
+        delta_lat = (extension_km / 111.0) * math.cos(angle_rad)
+        delta_lon = (extension_km / (111.0 * math.cos(math.radians(lat)))) * math.sin(angle_rad)
+
+        new_lat = lat + delta_lat
+        new_lon = lon + delta_lon
+        return (new_lon, new_lat)
+
+    # Construire deux segments (demi-droites)
+    p1 = (lon1, lat1)
+    p2 = extend(lat1, lon1, track1, extension_km)
+
+    q1 = (lon2, lat2)
+    q2 = extend(lat2, lon2, track2, extension_km)
+
+    line1 = LineString([p1, p2])
+    line2 = LineString([q1, q2])
+
+    intersection = line1.intersection(line2)
+
+    if intersection.is_empty or not isinstance(intersection, Point):
+        # Fallback : milieu simple
+        print(f"[Fallback] i={i}, j={j}")
+        print(f"  Point i: lat={lat1}, lon={lon1}, track={track1}")
+        print(f"  Point j: lat={lat2}, lon={lon2}, track(opposite)={track2}")
+        print(f"  Line1: {p1} -> {p2}")
+        print(f"  Line2: {q1} -> {q2}")
+        plot_debug(p1, p2, q1, q2)
+
+        lat_mid = (lat1 + lat2) / 2
+        lon_mid = (lon1 + lon2) / 2
+    else:
+        lon_mid, lat_mid = intersection.x, intersection.y
+
     turn_point = {
-        'timestamp': point_before['timestamp'] + (point_after['timestamp'] - point_before['timestamp']) / 2,
-        'callsign': point_before['callsign'],
-        'regis': point_before['regis'],
-        'hex': point_before['hex'],
-        'lat': (point_before['lat'] + point_after['lat']) / 2,
-        'lon': (point_before['lon'] + point_after['lon']) / 2
+        'timestamp': point_i['timestamp'] + (point_j['timestamp'] - point_i['timestamp']) / 2,
+        'callsign': point_i['callsign'],
+        'regis': point_i['regis'],
+        'hex': point_i['hex'],
+        'lat': lat_mid,
+        'lon': lon_mid
     }
-    
+
     return turn_point
+
+def plot_debug(p1, p2, q1, q2, intersection=None):
+    """
+    Affiche les deux lignes avec matplotlib, pour diagnostiquer visuellement une absence d'intersection.
+    """
+    plt.figure(figsize=(8, 8))
+    plt.plot([p1[0], p2[0]], [p1[1], p2[1]], 'r-', label='Ligne i (track)')
+    plt.plot([q1[0], q2[0]], [q1[1], q2[1]], 'b-', label='Ligne j (track opposé)')
+
+    if intersection and not intersection.is_empty:
+        plt.plot(intersection.x, intersection.y, 'go', label='Intersection')
+
+    plt.xlabel("Longitude")
+    plt.ylabel("Latitude")
+    plt.title("Visualisation des lignes de croisement")
+    plt.legend()
+    plt.grid(True)
+    plt.axis('equal')
+    plt.savefig("debug_intersection.png")
+
+
 
 
 def angular_difference(angle1, angle2):
