@@ -218,14 +218,19 @@ def detect_turns(aircraft_data):
         print(f"{tracks=}")
         print(f"{tracks_unwrapped_degrees=}")
 
-        transitions = detect_paliers_avec_tuples(
-            tracks_unwrapped_degrees.tolist(), 
-            pen=1.0,  # Pénalité réduite pour être plus sensible
-            min_size=2  # Segments plus petits autorisés
+        segments = detect_segments_fourchette(
+            tracks_unwrapped_degrees.tolist(),
+            largeur_fourchette=2.0,
+            min_size=2
         )
 
-        print(f"{transitions=}")
+        print_segments_simple(segments)
         
+
+        transitions = extract_transitions(segments)
+
+        print(f"{transitions=}")
+
         # Générer le graphique pour cet avion
         hex_code = valid_track_data['hex'].iloc[0]
         plot_aircraft_tracks(hex_code, tracks, tracks_unwrapped_degrees, transitions, valid_track_data)
@@ -259,36 +264,119 @@ def detect_turns(aircraft_data):
     return turns
 
 
-def detect_paliers_avec_tuples(table, pen=1.0, min_size=2):
+def detect_segments_fourchette(table, largeur_fourchette=2, min_size=2):
     """
-    Utilise la librairie 'ruptures' pour détecter les paliers et retourne les transitions
-    sous forme de tuples (i, j) correspondant aux points de rupture entre les paliers.
-
+    Détecte les segments composés d'au moins min_size valeurs qui tiennent 
+    dans une fourchette de largeur donnée.
+    
     Args:
         table (list of float): Les données à analyser.
-        pen (float): Pénalité pour la détection (plus petit => plus de ruptures).
+        largeur_fourchette (float): Largeur maximale de la fourchette (max - min).
         min_size (int): Taille minimale d'un segment.
-
-    Returns:
-        list of tuples: Chaque tuple (i, j) représente une transition entre deux paliers :
-                        i = dernière valeur de l'ancien palier,
-                        j = première valeur du nouveau palier.
-    """
-    signal = np.array(table).reshape(-1, 1)
-
-    # Détection des ruptures de moyenne avec Pelt
-    algo = rpt.Pelt(model="l2", min_size=min_size).fit(signal)
-    changepoints = algo.predict(pen=pen)
     
-    print(f"Ruptures détectées aux points: {changepoints}")
+    Returns:
+        list of dict: Chaque dictionnaire contient:
+                     - 'debut': index de début du segment
+                     - 'fin': index de fin du segment (inclus)
+                     - 'valeurs': liste des valeurs du segment
+                     - 'min': valeur minimale du segment
+                     - 'max': valeur maximale du segment
+                     - 'fourchette': largeur de la fourchette (max - min)
+    """
+    if len(table) < min_size:
+        return []
+    
+    segments = []
+    i = 0
+    
+    while i < len(table):
+        # Commencer un nouveau segment potentiel
+        segment_debut = i
+        segment_fin = i
+        
+        # Étendre le segment tant que la fourchette reste acceptable
+        while segment_fin < len(table):
+            # Calculer la fourchette du segment actuel
+            segment_values = table[segment_debut:segment_fin + 1]
+            min_val = min(segment_values)
+            max_val = max(segment_values)
+            fourchette_actuelle = max_val - min_val
+            
+            # Si la fourchette dépasse la limite, arrêter l'extension
+            if fourchette_actuelle > largeur_fourchette:
+                segment_fin -= 1  # Revenir au dernier point valide
+                break
+            
+            segment_fin += 1
+        
+        # Ajuster segment_fin si on a atteint la fin du tableau
+        if segment_fin >= len(table):
+            segment_fin = len(table) - 1
+        
+        # Vérifier si le segment a la taille minimale requise
+        taille_segment = segment_fin - segment_debut + 1
+        if taille_segment >= min_size:
+            segment_values = table[segment_debut:segment_fin + 1]
+            min_val = min(segment_values)
+            max_val = max(segment_values)
+            
+            segments.append({
+                'debut': segment_debut,
+                'fin': segment_fin,
+                'valeurs': segment_values,
+                'min': min_val,
+                'max': max_val,
+                'fourchette': max_val - min_val
+            })
+        
+        # Passer au point suivant
+        i = segment_fin + 1
+    
+    return segments
 
-    # Transformation des ruptures en transitions (i, j)
+
+def print_segments_simple(segments):
+    """
+    Affiche les segments de manière concise avec leurs indices.
+    
+    Args:
+        segments (list): Liste des segments retournée par detect_segments_fourchette
+    """
+    if not segments:
+        print("Aucun segment trouvé")
+        return
+    
+    print(f"{len(segments)} segment(s) trouvé(s):")
+    for i, seg in enumerate(segments):
+        print(f"  Segment {i+1}: indices {seg['debut']}-{seg['fin']}")
+
+
+def extract_transitions(segments):
+    """
+    Extrait les transitions entre segments consécutifs.
+    
+    Args:
+        segments (list): Liste des segments retournée par detect_segments_fourchette
+    
+    Returns:
+        list of tuples: Chaque tuple (i, j) représente une transition où:
+                       i = index de fin du segment précédent
+                       j = index de début du segment suivant
+    """
+    if len(segments) < 2:
+        return []
+    
     transitions = []
-    for k in range(len(changepoints) - 1):
-        i = changepoints[k] - 1  # dernière valeur du palier précédent
-        j = changepoints[k]      # première valeur du nouveau palier
-        transitions.append((i, j))
-
+    
+    for i in range(len(segments) - 1):
+        segment_actuel = segments[i]
+        segment_suivant = segments[i + 1]
+        
+        fin_actuel = segment_actuel['fin']
+        debut_suivant = segment_suivant['debut']
+        
+        transitions.append((fin_actuel, debut_suivant))
+    
     return transitions
 
 
