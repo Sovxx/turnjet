@@ -283,7 +283,8 @@ def detect_turns(aircraft_data):
     # Détecter les paliers avec ruptures
     try:
         # Utiliser detect_paliers_avec_tuples sur les données de track unwrappées
-        transitions = detect_paliers_avec_tuples(tracks_unwrapped_degrees.tolist(), pen=2.0)
+        # Augmenter la pénalité pour être moins sensible aux petites variations
+        transitions = detect_paliers_avec_tuples(tracks_unwrapped_degrees.tolist(), pen=5.0)
         print(f"{tracks=}")
         print(f"{tracks_unwrapped_degrees=}")
         print(f"{transitions=}")
@@ -293,33 +294,44 @@ def detect_turns(aircraft_data):
         plot_aircraft_tracks(hex_code, tracks, tracks_unwrapped_degrees, transitions, valid_track_data)
         
         # Analyser chaque transition pour détecter les virages significatifs
+        # Filtrer les transitions trop petites avant même de les traiter
+        significant_transitions = []
         for i, j in transitions:
             # Vérifier que les indices sont valides
             if i >= 0 and j < len(valid_track_data):
                 # Calculer la différence angulaire entre les paliers
-                # Utiliser les valeurs unwrappées pour éviter les problèmes de discontinuité
                 track_before_unwrapped = tracks_unwrapped_degrees[i]
                 track_after_unwrapped = tracks_unwrapped_degrees[j]
                 
-                # La différence directe est correcte car les angles sont unwrappés
                 angle_diff = abs(track_after_unwrapped - track_before_unwrapped)
                 
-                # Si l'écart est supérieur à 6°, c'est un virage
-                if angle_diff > 6:
-                    # Estimer le point de virage (interpolation entre i et j)
-                    turn_point = estimate_turn_point_from_indices(valid_track_data, i, j)
-                    
-                    # Créer l'entrée pour le fichier turns.csv
-                    turn_entry = [
-                        turn_point['timestamp'].strftime('%Y-%m-%dT%H:%M:%S'),
-                        turn_point['callsign'],
-                        turn_point['regis'],
-                        turn_point['hex'],
-                        turn_point['lat'],
-                        turn_point['lon']
-                    ]
-                    
-                    turns.append(turn_entry)
+                # Ne conserver que les transitions significatives (> 10°)
+                if angle_diff > 10:
+                    significant_transitions.append((i, j))
+        
+        print(f"Transitions significatives (>10°): {significant_transitions}")
+        
+        # Traiter les transitions significatives
+        for i, j in significant_transitions:
+            # Calculer la différence angulaire entre les paliers
+            track_before_unwrapped = tracks_unwrapped_degrees[i]
+            track_after_unwrapped = tracks_unwrapped_degrees[j]
+            angle_diff = abs(track_after_unwrapped - track_before_unwrapped)
+            
+            # Estimer le point de virage (interpolation entre i et j)
+            turn_point = estimate_turn_point_from_indices(valid_track_data, i, j)
+            
+            # Créer l'entrée pour le fichier turns.csv
+            turn_entry = [
+                turn_point['timestamp'].strftime('%Y-%m-%dT%H:%M:%S'),
+                turn_point['callsign'],
+                turn_point['regis'],
+                turn_point['hex'],
+                turn_point['lat'],
+                turn_point['lon']
+            ]
+            
+            turns.append(turn_entry)
     
     except Exception as e:
         print(f"Erreur lors de la détection des paliers: {e}")
