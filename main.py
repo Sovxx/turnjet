@@ -212,40 +212,27 @@ def detect_turns(aircraft_data):
         # Utiliser detect_paliers_avec_tuples sur les données de track unwrappées
         # Réduire la pénalité pour être plus sensible aux changements
         # Réduire la taille minimale des segments
+
+        print("#####################################")
+
+        print(f"{tracks=}")
+        print(f"{tracks_unwrapped_degrees=}")
+
         transitions = detect_paliers_avec_tuples(
             tracks_unwrapped_degrees.tolist(), 
             pen=1.0,  # Pénalité réduite pour être plus sensible
             min_size=2  # Segments plus petits autorisés
         )
-        
-        print(f"{tracks=}")
-        print(f"{tracks_unwrapped_degrees=}")
+
         print(f"{transitions=}")
         
         # Générer le graphique pour cet avion
         hex_code = valid_track_data['hex'].iloc[0]
         plot_aircraft_tracks(hex_code, tracks, tracks_unwrapped_degrees, transitions, valid_track_data)
         
-        # Analyser chaque transition pour détecter les virages significatifs
-        # Filtrer les transitions trop petites avant même de les traiter
-        significant_transitions = []
+        
+        # Traiter les transitions 
         for i, j in transitions:
-            # Vérifier que les indices sont valides
-            if i >= 0 and j < len(valid_track_data):
-                # Calculer la différence angulaire entre les paliers
-                track_before_unwrapped = tracks_unwrapped_degrees[i]
-                track_after_unwrapped = tracks_unwrapped_degrees[j]
-                
-                angle_diff = abs(track_after_unwrapped - track_before_unwrapped)
-                
-                # Réduire le seuil pour capturer plus de transitions (> 5° au lieu de 10°)
-                if angle_diff > 5:
-                    significant_transitions.append((i, j))
-        
-        print(f"Transitions significatives (>5°): {significant_transitions}")
-        
-        # Traiter les transitions significatives
-        for i, j in significant_transitions:
             # Calculer la différence angulaire entre les paliers
             track_before_unwrapped = tracks_unwrapped_degrees[i]
             track_after_unwrapped = tracks_unwrapped_degrees[j]
