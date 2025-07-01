@@ -102,7 +102,7 @@ def check_aircraft():
             ]
             save_csv(row)
 
-            print("🛬 Aircraft detected :", row)
+            #print("🛬 Aircraft detected :", row)
 
     except Exception as e:
         logging.error("API error: %s", e)
@@ -171,8 +171,182 @@ def process_aircraft_turns(records_file='records.csv', turns_file='turns.csv'):
     # Réécrire le fichier records.csv sans les avions anciens
     df_cleaned.to_csv(records_file, header=False, index=False)
     
-    print(f"Nombre de lignes supprimées: {len(df) - len(df_cleaned)}")
-    print(f"Nombre de lignes restantes: {len(df_cleaned)}")
+    #print(f"Nombre de lignes supprimées: {len(df) - len(df_cleaned)}")
+    #print(f"Nombre de lignes restantes: {len(df_cleaned)}")
+
+
+
+
+def detect_turns(aircraft_data):
+    """
+    Détecte les changements de direction pour un avion donné en utilisant detect_paliers_avec_tuples.
+    
+    Args:
+        aircraft_data (DataFrame): Données d'un avion spécifique triées par timestamp
+        
+    Returns:
+        list: Liste des virages détectés
+    """
+    turns = []
+    
+    # Vérifier qu'on a assez de données
+    if len(aircraft_data) < 6:
+        return turns
+    
+    # Filtrer les données avec des valeurs de track valides
+    valid_track_data = aircraft_data.dropna(subset=['track']).reset_index(drop=True)
+    
+    if len(valid_track_data) < 6:
+        return turns
+    
+    # Extraire les valeurs de track
+    tracks = valid_track_data['track'].values
+    
+    # Gérer la discontinuité des angles (0°/360°)
+    # Unwrapper les angles pour éviter les sauts de 360° à 0°
+    tracks_unwrapped = np.unwrap(np.radians(tracks))
+    tracks_unwrapped_degrees = np.degrees(tracks_unwrapped)
+    
+    # Détecter les paliers avec ruptures
+    try:
+        # Utiliser detect_paliers_avec_tuples sur les données de track unwrappées
+        # Réduire la pénalité pour être plus sensible aux changements
+        # Réduire la taille minimale des segments
+        transitions = detect_paliers_avec_tuples(
+            tracks_unwrapped_degrees.tolist(), 
+            pen=1.0,  # Pénalité réduite pour être plus sensible
+            min_size=2  # Segments plus petits autorisés
+        )
+        
+        print(f"{tracks=}")
+        print(f"{tracks_unwrapped_degrees=}")
+        print(f"{transitions=}")
+        
+        # Générer le graphique pour cet avion
+        hex_code = valid_track_data['hex'].iloc[0]
+        plot_aircraft_tracks(hex_code, tracks, tracks_unwrapped_degrees, transitions, valid_track_data)
+        
+        # Analyser chaque transition pour détecter les virages significatifs
+        # Filtrer les transitions trop petites avant même de les traiter
+        significant_transitions = []
+        for i, j in transitions:
+            # Vérifier que les indices sont valides
+            if i >= 0 and j < len(valid_track_data):
+                # Calculer la différence angulaire entre les paliers
+                track_before_unwrapped = tracks_unwrapped_degrees[i]
+                track_after_unwrapped = tracks_unwrapped_degrees[j]
+                
+                angle_diff = abs(track_after_unwrapped - track_before_unwrapped)
+                
+                # Réduire le seuil pour capturer plus de transitions (> 5° au lieu de 10°)
+                if angle_diff > 5:
+                    significant_transitions.append((i, j))
+        
+        print(f"Transitions significatives (>5°): {significant_transitions}")
+        
+        # Traiter les transitions significatives
+        for i, j in significant_transitions:
+            # Calculer la différence angulaire entre les paliers
+            track_before_unwrapped = tracks_unwrapped_degrees[i]
+            track_after_unwrapped = tracks_unwrapped_degrees[j]
+            angle_diff = abs(track_after_unwrapped - track_before_unwrapped)
+            
+            # Estimer le point de virage (interpolation entre i et j)
+            turn_point = estimate_turn_point_from_indices(valid_track_data, i, j)
+            
+            # Créer l'entrée pour le fichier turns.csv
+            turn_entry = [
+                turn_point['timestamp'].strftime('%Y-%m-%dT%H:%M:%S'),
+                turn_point['callsign'],
+                turn_point['regis'],
+                turn_point['hex'],
+                turn_point['lat'],
+                turn_point['lon']
+            ]
+            
+            turns.append(turn_entry)
+    
+    except Exception as e:
+        print(f"Erreur lors de la détection des paliers: {e}")
+    
+    return turns
+
+
+def detect_paliers_avec_tuples(table, pen=1.0, min_size=2):
+    """
+    Utilise la librairie 'ruptures' pour détecter les paliers et retourne les transitions
+    sous forme de tuples (i, j) correspondant aux points de rupture entre les paliers.
+
+    Args:
+        table (list of float): Les données à analyser.
+        pen (float): Pénalité pour la détection (plus petit => plus de ruptures).
+        min_size (int): Taille minimale d'un segment.
+
+    Returns:
+        list of tuples: Chaque tuple (i, j) représente une transition entre deux paliers :
+                        i = dernière valeur de l'ancien palier,
+                        j = première valeur du nouveau palier.
+    """
+    signal = np.array(table).reshape(-1, 1)
+
+    # Détection des ruptures de moyenne avec Pelt
+    algo = rpt.Pelt(model="l2", min_size=min_size).fit(signal)
+    changepoints = algo.predict(pen=pen)
+    
+    print(f"Ruptures détectées aux points: {changepoints}")
+
+    # Transformation des ruptures en transitions (i, j)
+    transitions = []
+    for k in range(len(changepoints) - 1):
+        i = changepoints[k] - 1  # dernière valeur du palier précédent
+        j = changepoints[k]      # première valeur du nouveau palier
+        transitions.append((i, j))
+
+    return transitions
+
+
+def estimate_turn_point_from_indices(aircraft_data, i, j):
+    """
+    Estime le point de virage entre deux indices de données.
+    
+    Args:
+        aircraft_data (DataFrame): Données de l'avion
+        i (int): Indice du dernier point avant le virage
+        j (int): Indice du premier point après le virage
+        
+    Returns:
+        dict: Point estimé du virage
+    """
+    # Prendre les points correspondants aux indices
+    point_before = aircraft_data.iloc[i]
+    point_after = aircraft_data.iloc[j]
+    
+    # Interpoler entre ces deux points
+    turn_point = {
+        'timestamp': point_before['timestamp'] + (point_after['timestamp'] - point_before['timestamp']) / 2,
+        'callsign': point_before['callsign'],
+        'regis': point_before['regis'],
+        'hex': point_before['hex'],
+        'lat': (point_before['lat'] + point_after['lat']) / 2,
+        'lon': (point_before['lon'] + point_after['lon']) / 2
+    }
+    
+    return turn_point
+
+
+def angular_difference(angle1, angle2):
+    """
+    Calcule la différence angulaire minimale entre deux angles (0-360°).
+    
+    Args:
+        angle1, angle2 (float): Angles en degrés
+        
+    Returns:
+        float: Différence angulaire minimale
+    """
+    diff = abs(angle1 - angle2)
+    return min(diff, 360 - diff)
+
 
 def plot_aircraft_tracks(hex_code, tracks, tracks_unwrapped_degrees, transitions, aircraft_data):
     """
@@ -249,164 +423,6 @@ def plot_aircraft_tracks(hex_code, tracks, tracks_unwrapped_degrees, transitions
     plt.close()  # Fermer la figure pour libérer la mémoire
     
     print(f"📊 Graphique sauvegardé: {filename}")
-
-def detect_turns(aircraft_data):
-    """
-    Détecte les changements de direction pour un avion donné en utilisant detect_paliers_avec_tuples.
-    
-    Args:
-        aircraft_data (DataFrame): Données d'un avion spécifique triées par timestamp
-        
-    Returns:
-        list: Liste des virages détectés
-    """
-    turns = []
-    
-    # Vérifier qu'on a assez de données
-    if len(aircraft_data) < 6:
-        return turns
-    
-    # Filtrer les données avec des valeurs de track valides
-    valid_track_data = aircraft_data.dropna(subset=['track']).reset_index(drop=True)
-    
-    if len(valid_track_data) < 6:
-        return turns
-    
-    # Extraire les valeurs de track
-    tracks = valid_track_data['track'].values
-    
-    # Gérer la discontinuité des angles (0°/360°)
-    # Unwrapper les angles pour éviter les sauts de 360° à 0°
-    tracks_unwrapped = np.unwrap(np.radians(tracks))
-    tracks_unwrapped_degrees = np.degrees(tracks_unwrapped)
-    
-    # Détecter les paliers avec ruptures
-    try:
-        # Utiliser detect_paliers_avec_tuples sur les données de track unwrappées
-        # Augmenter la pénalité pour être moins sensible aux petites variations
-        transitions = detect_paliers_avec_tuples(tracks_unwrapped_degrees.tolist(), pen=5.0)
-        print(f"{tracks=}")
-        print(f"{tracks_unwrapped_degrees=}")
-        print(f"{transitions=}")
-        
-        # Générer le graphique pour cet avion
-        hex_code = valid_track_data['hex'].iloc[0]
-        plot_aircraft_tracks(hex_code, tracks, tracks_unwrapped_degrees, transitions, valid_track_data)
-        
-        # Analyser chaque transition pour détecter les virages significatifs
-        # Filtrer les transitions trop petites avant même de les traiter
-        significant_transitions = []
-        for i, j in transitions:
-            # Vérifier que les indices sont valides
-            if i >= 0 and j < len(valid_track_data):
-                # Calculer la différence angulaire entre les paliers
-                track_before_unwrapped = tracks_unwrapped_degrees[i]
-                track_after_unwrapped = tracks_unwrapped_degrees[j]
-                
-                angle_diff = abs(track_after_unwrapped - track_before_unwrapped)
-                
-                # Ne conserver que les transitions significatives (> 10°)
-                if angle_diff > 10:
-                    significant_transitions.append((i, j))
-        
-        print(f"Transitions significatives (>10°): {significant_transitions}")
-        
-        # Traiter les transitions significatives
-        for i, j in significant_transitions:
-            # Calculer la différence angulaire entre les paliers
-            track_before_unwrapped = tracks_unwrapped_degrees[i]
-            track_after_unwrapped = tracks_unwrapped_degrees[j]
-            angle_diff = abs(track_after_unwrapped - track_before_unwrapped)
-            
-            # Estimer le point de virage (interpolation entre i et j)
-            turn_point = estimate_turn_point_from_indices(valid_track_data, i, j)
-            
-            # Créer l'entrée pour le fichier turns.csv
-            turn_entry = [
-                turn_point['timestamp'].strftime('%Y-%m-%dT%H:%M:%S'),
-                turn_point['callsign'],
-                turn_point['regis'],
-                turn_point['hex'],
-                turn_point['lat'],
-                turn_point['lon']
-            ]
-            
-            turns.append(turn_entry)
-    
-    except Exception as e:
-        print(f"Erreur lors de la détection des paliers: {e}")
-    
-    return turns
-
-def estimate_turn_point_from_indices(aircraft_data, i, j):
-    """
-    Estime le point de virage entre deux indices de données.
-    
-    Args:
-        aircraft_data (DataFrame): Données de l'avion
-        i (int): Indice du dernier point avant le virage
-        j (int): Indice du premier point après le virage
-        
-    Returns:
-        dict: Point estimé du virage
-    """
-    # Prendre les points correspondants aux indices
-    point_before = aircraft_data.iloc[i]
-    point_after = aircraft_data.iloc[j]
-    
-    # Interpoler entre ces deux points
-    turn_point = {
-        'timestamp': point_before['timestamp'] + (point_after['timestamp'] - point_before['timestamp']) / 2,
-        'callsign': point_before['callsign'],
-        'regis': point_before['regis'],
-        'hex': point_before['hex'],
-        'lat': (point_before['lat'] + point_after['lat']) / 2,
-        'lon': (point_before['lon'] + point_after['lon']) / 2
-    }
-    
-    return turn_point
-
-def angular_difference(angle1, angle2):
-    """
-    Calcule la différence angulaire minimale entre deux angles (0-360°).
-    
-    Args:
-        angle1, angle2 (float): Angles en degrés
-        
-    Returns:
-        float: Différence angulaire minimale
-    """
-    diff = abs(angle1 - angle2)
-    return min(diff, 360 - diff)
-
-def detect_paliers_avec_tuples(table, pen=1.0):
-    """
-    Utilise la librairie 'ruptures' pour détecter les paliers et retourne les transitions
-    sous forme de tuples (i, j) correspondant aux points de rupture entre les paliers.
-
-    Args:
-        table (list of float): Les données à analyser.
-        pen (float): Pénalité pour la détection (plus grand => moins de ruptures).
-
-    Returns:
-        list of tuples: Chaque tuple (i, j) représente une transition entre deux paliers :
-                        i = dernière valeur de l'ancien palier,
-                        j = première valeur du nouveau palier.
-    """
-    signal = np.array(table).reshape(-1, 1)
-
-    # Détection des ruptures de moyenne avec Pelt
-    algo = rpt.Pelt(model="l2").fit(signal)
-    changepoints = algo.predict(pen=pen)
-
-    # Transformation des ruptures en transitions (i, j)
-    transitions = []
-    for k in range(len(changepoints) - 1):
-        i = changepoints[k] - 1  # dernière valeur du palier précédent
-        j = changepoints[k]      # première valeur du nouveau palier
-        transitions.append((i, j))
-
-    return transitions
 
 if __name__ == "__main__":
 
