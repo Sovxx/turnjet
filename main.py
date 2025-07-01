@@ -9,6 +9,7 @@ import ruptures as rpt
 import time
 from datetime import datetime, timedelta
 import logging
+import matplotlib.pyplot as plt
 
 config = configparser.ConfigParser()
 config.read("config.ini")
@@ -172,7 +173,7 @@ def process_aircraft_turns(records_file='records.csv', turns_file='turns.csv'):
 
 def detect_turns(aircraft_data):
     """
-    Détecte les changements de direction pour un avion donné.
+    Détecte les changements de direction pour un avion donné en utilisant detect_paliers_avec_tuples.
     
     Args:
         aircraft_data (DataFrame): Données d'un avion spécifique triées par timestamp
@@ -182,65 +183,93 @@ def detect_turns(aircraft_data):
     """
     turns = []
     
-    # Parcourir les données pour détecter les virages
-    for i in range(len(aircraft_data) - 5):  # -5 car on a besoin de 6 points consécutifs
+    # Vérifier qu'on a assez de données
+    if len(aircraft_data) < 6:
+        return turns
+    
+    # Filtrer les données avec des valeurs de track valides
+    valid_track_data = aircraft_data.dropna(subset=['track']).reset_index(drop=True)
+    
+    if len(valid_track_data) < 6:
+        return turns
+    
+    # Extraire les valeurs de track
+    tracks = valid_track_data['track'].values
+    
+    # Gérer la discontinuité des angles (0°/360°)
+    # Unwrapper les angles pour éviter les sauts de 360° à 0°
+    tracks_unwrapped = np.unwrap(np.radians(tracks))
+    tracks_unwrapped_degrees = np.degrees(tracks_unwrapped)
+    
+    # Détecter les paliers avec ruptures
+    try:
+        # Utiliser detect_paliers_avec_tuples sur les données de track unwrappées
+        transitions = detect_paliers_avec_tuples(tracks_unwrapped_degrees.tolist(), pen=2.0)
+        print(f"{tracks=}")
+        print(f"{tracks_unwrapped_degrees=}")
+        print(f"{transitions=}")
         
-        # Prendre 6 points consécutifs
-        segment = aircraft_data.iloc[i:i+6]
-        
-        # Diviser en deux groupes de 3
-        group1 = segment.iloc[0:3]
-        group2 = segment.iloc[3:6]
-        
-        # Vérifier la cohérence du track dans chaque groupe (écart max 3°)
-        if is_track_consistent(group1['track'].values, 3) and is_track_consistent(group2['track'].values, 3):
-            
-            # Calculer les moyennes des tracks
-            avg_track1 = np.mean(group1['track'].values)
-            avg_track2 = np.mean(group2['track'].values)
-            
-            # Calculer l'écart angulaire (en tenant compte de la nature circulaire des angles)
-            angle_diff = angular_difference(avg_track1, avg_track2)
-            
-            # Si l'écart est supérieur à 6°, c'est un virage
-            if angle_diff > 6:
+        # Analyser chaque transition pour détecter les virages significatifs
+        for i, j in transitions:
+            # Vérifier que les indices sont valides
+            if i >= 0 and j < len(valid_track_data):
+                # Calculer la différence angulaire entre les paliers
+                # Utiliser les valeurs unwrappées pour éviter les problèmes de discontinuité
+                track_before_unwrapped = tracks_unwrapped_degrees[i]
+                track_after_unwrapped = tracks_unwrapped_degrees[j]
                 
-                # Estimer le point de virage (point entre les deux segments)
-                turn_point = estimate_turn_point(group1, group2)
+                # La différence directe est correcte car les angles sont unwrappés
+                angle_diff = abs(track_after_unwrapped - track_before_unwrapped)
                 
-                # Créer l'entrée pour le fichier turns.csv
-                turn_entry = [
-                    turn_point['timestamp'].strftime('%Y-%m-%dT%H:%M:%S'),
-                    turn_point['callsign'],
-                    turn_point['regis'],
-                    turn_point['hex'],
-                    turn_point['lat'],
-                    turn_point['lon']
-                ]
-                
-                turns.append(turn_entry)
+                # Si l'écart est supérieur à 6°, c'est un virage
+                if angle_diff > 6:
+                    # Estimer le point de virage (interpolation entre i et j)
+                    turn_point = estimate_turn_point_from_indices(valid_track_data, i, j)
+                    
+                    # Créer l'entrée pour le fichier turns.csv
+                    turn_entry = [
+                        turn_point['timestamp'].strftime('%Y-%m-%dT%H:%M:%S'),
+                        turn_point['callsign'],
+                        turn_point['regis'],
+                        turn_point['hex'],
+                        turn_point['lat'],
+                        turn_point['lon']
+                    ]
+                    
+                    turns.append(turn_entry)
+    
+    except Exception as e:
+        print(f"Erreur lors de la détection des paliers: {e}")
     
     return turns
 
-def is_track_consistent(tracks, max_deviation):
+def estimate_turn_point_from_indices(aircraft_data, i, j):
     """
-    Vérifie si les tracks dans un groupe sont cohérents (écart max spécifié).
+    Estime le point de virage entre deux indices de données.
     
     Args:
-        tracks (array): Tableau des valeurs de track
-        max_deviation (float): Écart maximum autorisé en degrés
+        aircraft_data (DataFrame): Données de l'avion
+        i (int): Indice du dernier point avant le virage
+        j (int): Indice du premier point après le virage
         
     Returns:
-        bool: True si cohérent, False sinon
+        dict: Point estimé du virage
     """
-    if len(tracks) < 2:
-        return True
+    # Prendre les points correspondants aux indices
+    point_before = aircraft_data.iloc[i]
+    point_after = aircraft_data.iloc[j]
     
-    # Calculer tous les écarts angulaires par rapport à la moyenne
-    mean_track = np.mean(tracks)
-    deviations = [angular_difference(track, mean_track) for track in tracks]
+    # Interpoler entre ces deux points
+    turn_point = {
+        'timestamp': point_before['timestamp'] + (point_after['timestamp'] - point_before['timestamp']) / 2,
+        'callsign': point_before['callsign'],
+        'regis': point_before['regis'],
+        'hex': point_before['hex'],
+        'lat': (point_before['lat'] + point_after['lat']) / 2,
+        'lon': (point_before['lon'] + point_after['lon']) / 2
+    }
     
-    return all(dev <= max_deviation for dev in deviations)
+    return turn_point
 
 def angular_difference(angle1, angle2):
     """
@@ -254,32 +283,6 @@ def angular_difference(angle1, angle2):
     """
     diff = abs(angle1 - angle2)
     return min(diff, 360 - diff)
-
-def estimate_turn_point(group1, group2):
-    """
-    Estime le point de virage entre deux segments.
-    
-    Args:
-        group1, group2 (DataFrame): Les deux groupes de 3 points
-        
-    Returns:
-        dict: Point estimé du virage
-    """
-    # Prendre le dernier point du premier groupe et le premier du second
-    last_point_g1 = group1.iloc[-1]
-    first_point_g2 = group2.iloc[0]
-    
-    # Interpoler entre ces deux points
-    turn_point = {
-        'timestamp': last_point_g1['timestamp'] + (first_point_g2['timestamp'] - last_point_g1['timestamp']) / 2,
-        'callsign': last_point_g1['callsign'],
-        'regis': last_point_g1['regis'],
-        'hex': last_point_g1['hex'],
-        'lat': (last_point_g1['lat'] + first_point_g2['lat']) / 2,
-        'lon': (last_point_g1['lon'] + first_point_g2['lon']) / 2
-    }
-    
-    return turn_point
 
 def detect_paliers_avec_tuples(table, pen=1.0):
     """
