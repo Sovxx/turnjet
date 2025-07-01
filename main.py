@@ -236,8 +236,15 @@ def plot_aircraft_tracks(hex_code, tracks, tracks_unwrapped_degrees, transitions
     
     plt.tight_layout()
     
+    # Obtenir le timestamp du premier point de l'avion
+    first_timestamp = aircraft_data['timestamp'].iloc[0]
+    # Formater le timestamp pour le nom de fichier (remplacer les caractères non autorisés)
+    timestamp_str = first_timestamp.strftime('%Y%m%d_%H%M%S')
+    
+    # Créer le nom de fichier: timestamp-hex_code.png
+    filename = os.path.join(PLOTS_DIR, f'{timestamp_str}-{hex_code}.png')
+    
     # Sauvegarder le graphique
-    filename = os.path.join(PLOTS_DIR, f'{hex_code}.png')
     plt.savefig(filename, dpi=300, bbox_inches='tight')
     plt.close()  # Fermer la figure pour libérer la mémoire
     
