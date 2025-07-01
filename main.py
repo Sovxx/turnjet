@@ -5,6 +5,7 @@ import requests
 import csv
 import pandas as pd
 import numpy as np
+import ruptures as rpt
 import time
 from datetime import datetime, timedelta
 import logging
@@ -280,6 +281,34 @@ def estimate_turn_point(group1, group2):
     
     return turn_point
 
+def detect_paliers_avec_tuples(table, pen=1.0):
+    """
+    Utilise la librairie 'ruptures' pour détecter les paliers et retourne les transitions
+    sous forme de tuples (i, j) correspondant aux points de rupture entre les paliers.
+
+    Args:
+        table (list of float): Les données à analyser.
+        pen (float): Pénalité pour la détection (plus grand => moins de ruptures).
+
+    Returns:
+        list of tuples: Chaque tuple (i, j) représente une transition entre deux paliers :
+                        i = dernière valeur de l'ancien palier,
+                        j = première valeur du nouveau palier.
+    """
+    signal = np.array(table).reshape(-1, 1)
+
+    # Détection des ruptures de moyenne avec Pelt
+    algo = rpt.Pelt(model="l2").fit(signal)
+    changepoints = algo.predict(pen=pen)
+
+    # Transformation des ruptures en transitions (i, j)
+    transitions = []
+    for k in range(len(changepoints) - 1):
+        i = changepoints[k] - 1  # dernière valeur du palier précédent
+        j = changepoints[k]      # première valeur du nouveau palier
+        transitions.append((i, j))
+
+    return transitions
 
 if __name__ == "__main__":
 
