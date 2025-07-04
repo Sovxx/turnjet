@@ -29,6 +29,8 @@ if not (0 < RADIUS <= 250):
 MIN_ALT = int(config["altitude"]["min_alt"])
 MAX_ALT = int(config["altitude"]["max_alt"])
 
+DELAY = 20  # seconds
+
 CSV_FILE = "records.csv"
 PLOTS_DIR = "aircraft_plots"
 
@@ -243,17 +245,18 @@ def detect_turns(aircraft_data):
             # Estimer le point de virage (interpolation entre i et j)
             turn_point = estimate_turn_point_from_indices(valid_track_data, i, j)
             
-            # Créer l'entrée pour le fichier turns.csv
-            turn_entry = [
-                turn_point['timestamp'].strftime('%Y-%m-%dT%H:%M:%S'),
-                turn_point['callsign'],
-                turn_point['regis'],
-                turn_point['hex'],
-                turn_point['lat'],
-                turn_point['lon']
-            ]
+            if turn_point:
+                # Créer l'entrée pour le fichier turns.csv
+                turn_entry = [
+                    turn_point['timestamp'].strftime('%Y-%m-%dT%H:%M:%S'),
+                    turn_point['callsign'],
+                    turn_point['regis'],
+                    turn_point['hex'],
+                    turn_point['lat'],
+                    turn_point['lon']
+                ]
             
-            turns.append(turn_entry)
+                turns.append(turn_entry)
     
     except Exception as e:
         print(f"Erreur lors de la détection des paliers: {e}")
@@ -422,16 +425,15 @@ def estimate_turn_point_from_indices(aircraft_data, i, j):
     intersection = line1.intersection(line2)
 
     if intersection.is_empty or not isinstance(intersection, Point):
-        # Fallback : milieu simple
+        # Fallback : on ignorera cette intersection
         print(f"[Fallback] i={i}, j={j}")
         print(f"  Point i: lat={lat1}, lon={lon1}, track={track1}")
         print(f"  Point j: lat={lat2}, lon={lon2}, track(opposite)={track2}")
         print(f"  Line1: {p1} -> {p2}")
         print(f"  Line2: {q1} -> {q2}")
         plot_debug(p1, p2, q1, q2)
-
-        lat_mid = (lat1 + lat2) / 2
-        lon_mid = (lon1 + lon2) / 2
+        return False
+    
     else:
         lon_mid, lat_mid = intersection.x, intersection.y
 
@@ -588,5 +590,4 @@ if __name__ == "__main__":
     while True:
         check_aircraft()
         process_aircraft_turns()
-        delay = 60
-        time.sleep(delay)
+        time.sleep(DELAY)
