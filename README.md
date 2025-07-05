@@ -4,8 +4,8 @@
 
 Record aircraft turns around a set location using data from [adsb.lol](https://adsb.lol).
 
-![example_map](documentation/example_map.jpg "example_map").
-![example_plot](documentation/example_plot.jpg "example_plot").
+![example_map](documentation/example_map.png "example_map").
+![example_plot](documentation/example_plot.png "example_plot").
 
 ## Installation
 
