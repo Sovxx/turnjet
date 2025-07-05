@@ -81,9 +81,7 @@ def check_aircraft():
             alt = ac.get("alt_baro")  # ft
             lat = ac.get("lat")
             lon = ac.get("lon")
-            track = (
-                None if (ac.get("track") is None) else ac.get("track")
-            )  # aircraft own track in degrees
+            track = ac.get("track")  # aircraft own track in degrees
             
             if alt:
                 if type(alt) is not int:  # ex "ground"
@@ -92,7 +90,6 @@ def check_aircraft():
                 if not (MIN_ALT <= alt <= MAX_ALT):
                     continue  # skip this aircraft
         
-
             row = [
                 timestamp,
                 callsign,
@@ -173,12 +170,6 @@ def process_aircraft_turns(records_file='records.csv', turns_file='turns.csv'):
     
     # Réécrire le fichier records.csv sans les avions anciens
     df_cleaned.to_csv(records_file, header=False, index=False)
-    
-    #print(f"Nombre de lignes supprimées: {len(df) - len(df_cleaned)}")
-    #print(f"Nombre de lignes restantes: {len(df_cleaned)}")
-
-
-
 
 def detect_turns(aircraft_data):
     """
@@ -224,7 +215,6 @@ def detect_turns(aircraft_data):
 
         print_segments_simple(segments)
         
-
         transitions = extract_transitions(segments)
 
         print(f"{transitions=}")
@@ -240,7 +230,6 @@ def detect_turns(aircraft_data):
         # Générer le graphique pour cet avion
         hex_code = valid_track_data['hex'].iloc[0]
         plot_aircraft_tracks(hex_code, tracks, tracks_unwrapped_degrees, transitions, valid_track_data)
-        
         
         # Traiter les transitions 
         for i, j in transitions:
@@ -337,7 +326,6 @@ def detect_segments_fourchette(table, largeur_fourchette=2, min_size=2):
     
     return segments
 
-
 def print_segments_simple(segments):
     """
     Affiche les segments de manière concise avec leurs indices.
@@ -352,7 +340,6 @@ def print_segments_simple(segments):
     print(f"{len(segments)} segment(s) trouvé(s):")
     for i, seg in enumerate(segments):
         print(f"  Segment {i+1}: indices {seg['debut']}-{seg['fin']}")
-
 
 def extract_transitions(segments):
     """
@@ -382,7 +369,6 @@ def extract_transitions(segments):
     
     return transitions
 
-
 def filter_transitions(transitions, tracks_unwrapped_degrees, angle_mini=3.0):
     """
     Elimine les transitions dont l'angle est inférieur à angle_min
@@ -395,7 +381,6 @@ def filter_transitions(transitions, tracks_unwrapped_degrees, angle_mini=3.0):
             transitions_filtered.append((i, j))
 
     return transitions_filtered
-
 
 def estimate_turn_point_from_indices(aircraft_data, i, j):
     """
@@ -484,9 +469,6 @@ def plot_debug(p1, p2, q1, q2, intersection=None):
     plt.axis('equal')
     plt.savefig("debug_intersection.png")
 
-
-
-
 def angular_difference(angle1, angle2):
     """
     Calcule la différence angulaire minimale entre deux angles (0-360°).
@@ -499,7 +481,6 @@ def angular_difference(angle1, angle2):
     """
     diff = abs(angle1 - angle2)
     return min(diff, 360 - diff)
-
 
 def plot_aircraft_tracks(hex_code, tracks, tracks_unwrapped_degrees, transitions, aircraft_data):
     """
