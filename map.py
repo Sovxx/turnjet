@@ -141,7 +141,7 @@ def main():
     carte = create_map_with_points()
     
     if carte:
-        print(f"Map generated with succen in '{OUTPUT_FILE}'.")
+        print(f"Map generated with success in '{OUTPUT_FILE}'.")
 
 if __name__ == "__main__":
     main()

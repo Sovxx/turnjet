@@ -55,7 +55,10 @@ logging.basicConfig(
 )
 
 def save_csv(row):
-    with open(CSV_FILE, "a", newline="") as f:
+    with open(CSV_FILE, "w", newline="") as f:
+        # w mode will overwrite the file on purpose
+        # it is to avoid discontinuities in tracking
+        #   that would generate fake turns
         writer = csv.writer(f)
         writer.writerow(row)
 
@@ -560,6 +563,7 @@ def plot_aircraft_tracks(hex_code, tracks, tracks_unwrapped_degrees, transitions
 
 if __name__ == "__main__":
 
+    """
     header = [
         "timestamp",
         "callsign",
@@ -571,6 +575,7 @@ if __name__ == "__main__":
         "track",
     ]
 
+    
     # Create csv header line if csv file does not exist
     try:
         with open(CSV_FILE, "x", newline="") as f:
@@ -578,12 +583,11 @@ if __name__ == "__main__":
             writer.writerow(header)
     except FileExistsError:
         pass
+    """
 
     print(
         f"📡 Monitoring airspace within {RADIUS} NM from https://www.openstreetmap.org/#map=9/{LAT}/{LON} between {MIN_ALT} and {MAX_ALT} ft"
     )
-    print(f"Format: {header}")
-    print(f"📊 Graphiques sauvegardés dans le dossier: {PLOTS_DIR}")
 
     while True:
         check_aircraft()
