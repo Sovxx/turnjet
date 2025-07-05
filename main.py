@@ -210,12 +210,7 @@ def detect_turns(aircraft_data):
     tracks_unwrapped = np.unwrap(np.radians(tracks))
     tracks_unwrapped_degrees = np.degrees(tracks_unwrapped)
     
-    # Détecter les paliers avec ruptures
     try:
-        # Utiliser detect_paliers_avec_tuples sur les données de track unwrappées
-        # Réduire la pénalité pour être plus sensible aux changements
-        # Réduire la taille minimale des segments
-
         print("#####################################")
 
         print(f"{tracks=}")
@@ -223,14 +218,22 @@ def detect_turns(aircraft_data):
 
         segments = detect_segments_fourchette(
             tracks_unwrapped_degrees.tolist(),
-            largeur_fourchette=2.0,
-            min_size=2
+            largeur_fourchette=1.0,
+            min_size=3
         )
 
         print_segments_simple(segments)
         
 
         transitions = extract_transitions(segments)
+
+        print(f"{transitions=}")
+
+        transitions = filter_transitions(
+            transitions,
+            tracks_unwrapped_degrees,
+            angle_mini=3.0
+        )
 
         print(f"{transitions=}")
 
@@ -259,7 +262,7 @@ def detect_turns(aircraft_data):
                 turns.append(turn_entry)
     
     except Exception as e:
-        print(f"Erreur lors de la détection des paliers: {e}")
+        print(f"Erreur lors de la détection des virages: {e}")
     
     return turns
 
@@ -378,6 +381,20 @@ def extract_transitions(segments):
         transitions.append((fin_actuel, debut_suivant))
     
     return transitions
+
+
+def filter_transitions(transitions, tracks_unwrapped_degrees, angle_mini=3.0):
+    """
+    Elimine les transitions dont l'angle est inférieur à angle_min
+    """
+    transitions_filtered = []
+
+    for i, j in transitions:
+        angle_diff = abs(tracks_unwrapped_degrees[j] - tracks_unwrapped_degrees[i])
+        if angle_diff >= angle_mini:
+            transitions_filtered.append((i, j))
+
+    return transitions_filtered
 
 
 def estimate_turn_point_from_indices(aircraft_data, i, j):

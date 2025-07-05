@@ -1,6 +1,7 @@
 import json
 import csv
 import folium
+from folium import plugins
 from pathlib import Path
 
 def load_csv_data(file_path):
@@ -65,8 +66,11 @@ def create_map_with_points():
         zoom_start=6,
         tiles='OpenStreetMap'
     )
+
+    # Ajouter une échelle
+    plugins.MeasureControl().add_to(m)
     
-    # Ajouter les points rouges pour les radionavs
+    # Ajouter les points bleus pour les radionavs
     for radionav in radionavs:
         folium.CircleMarker(
             location=[radionav['latitude'], radionav['longitude']],
@@ -79,7 +83,7 @@ def create_map_with_points():
             fillOpacity=0.7
         ).add_to(m)
     
-    # Ajouter les points bleus pour les waypoints
+    # Ajouter les points verts pour les waypoints
     for waypoint in waypoints:
         folium.CircleMarker(
             location=[waypoint['latitude'], waypoint['longitude']],
@@ -105,12 +109,12 @@ def create_map_with_points():
     # Ajouter une légende
     legend_html = '''
     <div style="position: fixed; 
-                bottom: 50px; left: 50px; width: 150px; height: 90px; 
+                bottom: 30px; left: 30px; width: 130px; height: 110px; 
                 background-color: white; border:2px solid grey; z-index:9999; 
                 font-size:14px; padding: 10px">
-    <h4>Légende</h4>
-    <p><span style="color:red;">●</span> Radionavs</p>
-    <p><span style="color:blue;">●</span> Waypoints</p>
+    <p><span style="color:red;">●</span> Virages</p>
+    <p><span style="color:blue;">●</span> Radionavs</p>
+    <p><span style="color:green;">●</span> Waypoints</p>
     </div>
     '''
     m.get_root().html.add_child(folium.Element(legend_html))
