@@ -4,6 +4,9 @@
 
 Record aircraft turns around a set location using data from [adsb.lol](https://adsb.lol).
 
+![example_map](documentation/example_map.jpg "example_map").
+![example_plot](documentation/example_plot.jpg "example_plot").
+
 ## Installation
 
 1. Install **Python 3+**
