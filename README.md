@@ -18,6 +18,7 @@ Record aircraft turns around a set location using data from [adsb.lol](https://a
    ```
    python main.py
    ```
+   (After stopping, wait 2 hours before restarting to avoid discontinuities and fake turns)
 5. Wait for at least 2 hours
 6. Generate map:
 

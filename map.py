@@ -4,6 +4,8 @@ import folium
 from folium import plugins
 from pathlib import Path
 
+OUTPUT_FILE = 'carte_navigation.html'
+
 def load_csv_data(file_path):
     """Charge les données depuis un fichier CSV"""
     try:
@@ -112,7 +114,7 @@ def create_map_with_points():
                 bottom: 30px; left: 30px; width: 130px; height: 110px; 
                 background-color: white; border:2px solid grey; z-index:9999; 
                 font-size:14px; padding: 10px">
-    <p><span style="color:red;">●</span> Virages</p>
+    <p><span style="color:red;">●</span> Turns ('''+str(len(turns))+''')</p>
     <p><span style="color:blue;">●</span> Radionavs</p>
     <p><span style="color:green;">●</span> Waypoints</p>
     </div>
@@ -120,14 +122,7 @@ def create_map_with_points():
     m.get_root().html.add_child(folium.Element(legend_html))
     
     # Sauvegarder la carte
-    output_file = 'carte_navigation.html'
-    m.save(output_file)
-    
-    print(f"Carte générée avec succès !")
-    print(f"- {len(radionavs)} radionavs ajoutés (points bleus)")
-    print(f"- {len(waypoints)} waypoints ajoutés (points verts)")
-    print(f"- {len(turns)} avions ajoutés (points rouges)")
-    print(f"- Fichier sauvegardé : {output_file}")
+    m.save(OUTPUT_FILE)
     
     return m
 
@@ -146,7 +141,7 @@ def main():
     carte = create_map_with_points()
     
     if carte:
-        print("\nPour visualiser la carte, ouvrez le fichier 'carte_navigation.html' dans votre navigateur.")
+        print(f"Map generated with succen in '{OUTPUT_FILE}'.")
 
 if __name__ == "__main__":
     main()
