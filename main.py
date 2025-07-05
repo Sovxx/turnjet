@@ -29,7 +29,8 @@ MAX_ALT = int(config["altitude"]["max_alt"])
 
 DELAY = 20  # seconds
 
-CSV_FILE = "records.csv"
+RECORDS_FILE = "records.csv"
+TURNS_FILE = "turns.csv"
 PLOTS_DIR = "aircraft_plots"
 
 # Create directory for plots if it doesn't exist
@@ -52,8 +53,8 @@ logging.basicConfig(
     ]
 )
 
-def save_csv(row):
-    with open(CSV_FILE, "a", newline="") as f:
+def save_to_records(row):
+    with open(RECORDS_FILE, "a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(row)
 
@@ -98,33 +99,26 @@ def check_aircraft():
                 lon,
                 track,
             ]
-            save_csv(row)
-
-            #print("🛬 Aircraft detected :", row)
+            save_to_records(row)
 
     except Exception as e:
         logging.error("API error: %s", e)
         return False
 
-def process_aircraft_turns(records_file='records.csv', turns_file='turns.csv'):
+def process_aircraft_turns():
     """
     Analyze aircraft tracking data to detect direction changes
     and clean old data.
-    
-    Args:
-        records_file (str): Path to records.csv file
-        turns_file (str): Path to output turns.csv file
     """
     
     # File headers
-    records_header = ["timestamp", "callsign", "regis", "hex", "alt", "lat", "lon", "track"]
     turns_header = ["timestamp", "callsign", "regis", "hex", "lat", "lon"]
     
-    # Read records.csv file
+    # Read RECORDS_FILE
     try:
-        df = pd.read_csv(records_file, names=records_header)
+        df = pd.read_csv(RECORDS_FILE)
     except FileNotFoundError:
-        print(f"Error: File {records_file} does not exist.")
+        print(f"Error: File {RECORDS_FILE} does not exist.")
         return
     
     # Convert timestamps to datetime
@@ -153,9 +147,9 @@ def process_aircraft_turns(records_file='records.csv', turns_file='turns.csv'):
         turns = detect_turns(aircraft_data)
         turns_data.extend(turns)
     
-    # Write turns to turns.csv
+    # Write turns to TURNS_FILE
     if turns_data:
-        with open(turns_file, 'a', newline='') as f:
+        with open(TURNS_FILE, 'a', newline='') as f:
             writer = csv.writer(f)
             for turn in turns_data:
                 writer.writerow(turn)
@@ -166,8 +160,8 @@ def process_aircraft_turns(records_file='records.csv', turns_file='turns.csv'):
     # Remove old aircraft lines from DataFrame
     df_cleaned = df[~df['hex'].isin(old_aircraft_hex)]
     
-    # Rewrite records.csv file without old aircraft
-    df_cleaned.to_csv(records_file, header=False, index=False)
+    # Rewrite RECORDS_FILE without old aircraft
+    df_cleaned.to_csv(RECORDS_FILE, header=True, index=False)
 
 def detect_turns(aircraft_data):
     """
@@ -236,7 +230,7 @@ def detect_turns(aircraft_data):
             turn_point = estimate_turn_point_from_indices(valid_track_data, i, j)
             
             if turn_point:
-                # Create entry for turns.csv file
+                # Create entry for TURNS_FILE
                 turn_entry = [
                     turn_point['timestamp'].strftime('%Y-%m-%dT%H:%M:%S'),
                     turn_point['callsign'],
@@ -556,8 +550,8 @@ def plot_aircraft_tracks(hex_code, tracks, tracks_unwrapped_degrees, transitions
     
     print(f"📊 Plot saved: {filename}")
 
-if __name__ == "__main__":
-    header = [
+def setup_csv_files():
+    records_header = [
         "timestamp",
         "callsign",
         "regis",
@@ -568,12 +562,31 @@ if __name__ == "__main__":
         "track",
     ]
 
-    with open(CSV_FILE, "w", newline="") as f:
-        # w mode will overwrite the file on purpose
-        # it is to avoid discontinuities in tracking
+    with open(RECORDS_FILE, "w", newline="") as f:
+        # w mode will overwrite the RECORDS_FILE on purpose
+        # This is to avoid discontinuities in tracking
         #   that would generate fake turns
         writer = csv.writer(f)
-        writer.writerow(header)
+        writer.writerow(records_header)
+
+    turns_header = [
+        "timestamp",
+        "callsign",
+        "regis",
+        "hex",
+        "lat",
+        "lon",
+    ]
+
+    if not os.path.exists(TURNS_FILE) or os.path.getsize(TURNS_FILE) == 0:
+        # TURNS_FILE is kept to avoid losing data
+        with open(TURNS_FILE, 'w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            writer.writerow(turns_header)
+
+if __name__ == "__main__":
+
+    setup_csv_files()
 
     print(
         f"📡 Monitoring airspace within {RADIUS} NM from https://www.openstreetmap.org/#map=9/{LAT}/{LON} between {MIN_ALT} and {MAX_ALT} ft"
