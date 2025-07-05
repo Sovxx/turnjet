@@ -18,3 +18,9 @@ Record aircraft turns around a set location using data from [adsb.lol](https://a
    ```
    python main.py
    ```
+5. Wait for at least 2 hours
+6. Generate map:
+
+   ```
+   python map.py
+   ```
