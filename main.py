@@ -111,15 +111,11 @@ def process_aircraft_turns():
     and clean old data.
     """
     
-    # File headers
-    turns_header = ["timestamp", "callsign", "regis", "hex", "lat", "lon"]
-    
     # Read RECORDS_FILE
     try:
         df = pd.read_csv(RECORDS_FILE)
     except FileNotFoundError:
-        print(f"Error: File {RECORDS_FILE} does not exist.")
-        return
+        raise FileNotFoundError(f"The file {RECORDS_FILE} was not found.")
     
     # Convert timestamps to datetime
     df['timestamp'] = pd.to_datetime(df['timestamp'], format='ISO8601')
@@ -591,6 +587,7 @@ if __name__ == "__main__":
     print(
         f"📡 Monitoring airspace within {RADIUS} NM from https://www.openstreetmap.org/#map=9/{LAT}/{LON} between {MIN_ALT} and {MAX_ALT} ft"
     )
+    print("Leave this code running at least one hour to detect turns.")
 
     while True:
         check_aircraft()

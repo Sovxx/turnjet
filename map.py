@@ -4,7 +4,7 @@ import folium
 from folium import plugins
 from pathlib import Path
 
-TURNS_FILE = 'turnsfake.csv'
+TURNS_FILE = 'turns.csv'
 RADIONAVS_FILE = 'resources/radionavs.json'
 WAYPOINTS_FILE = 'resources/waypoints.json'
 
@@ -16,7 +16,10 @@ def load_csv_data(file_path):
         turns = []
         with open(file_path, 'r', encoding='utf-8') as f:
             reader = csv.reader(f)
-            next(reader)  # Skip the header
+            try:
+                next(reader)  # Skip the header
+            except StopIteration:
+                raise ValueError(f"The file {file_path} is empty.")
             for row in reader:
                 if len(row) >= 6:
                     turns.append({
@@ -28,14 +31,17 @@ def load_csv_data(file_path):
                         'longitude': float(row[5])
                     })
         if not turns:
-            raise ValueError(f"The file {file_path} is empty or has no valid data rows.")
+            raise ValueError(f"The file {file_path} contains no valid data.")
         return turns
     except FileNotFoundError:
-        print(f"Error: The file {file_path} was not found.")
-        return []
-    except (ValueError, IndexError):
-        print(f"Error: Invalid data format in {file_path}.")
-        return []
+        raise FileNotFoundError(f"The file {file_path} was not found.")
+    except ValueError as e:
+        if "is empty" in str(e) or "contains no valid data" in str(e):
+            raise e
+        else:
+            raise ValueError(f"Invalid data format in {file_path}.")
+    except IndexError:
+        raise ValueError(f"Invalid data format in {file_path}.")
 
 def load_json_data(file_path):
     """Load data from a JSON file"""
@@ -43,10 +49,8 @@ def load_json_data(file_path):
         with open(file_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except FileNotFoundError:
-        print(f"Error: The file {file_path} was not found.")
         return []
     except json.JSONDecodeError:
-        print(f"Error: The file {file_path} is not a valid JSON.")
         return []
 
 def create_map_with_points():
@@ -56,9 +60,6 @@ def create_map_with_points():
     turns = load_csv_data(TURNS_FILE)
     radionavs = load_json_data(RADIONAVS_FILE)
     waypoints = load_json_data(WAYPOINTS_FILE)
-    
-    if not turns:
-        raise ValueError(f"{TURNS_FILE} has no data rows. Run main.py for at least 2 hours.")
     
     # Calculate map center based on turns points
     center_lat = sum(point['latitude'] for point in turns) / len(turns)
@@ -128,8 +129,7 @@ def create_map_with_points():
         m.save(OUTPUT_FILE)
         return m
     except Exception as e:
-        print(f"Error saving map: {e}")
-        return None
+        raise Exception(f"Error saving map: {e}")
     
 def main():
     print("Generating navigation map...")
@@ -140,12 +140,14 @@ def main():
         if map_obj:
             print(f"Map generated successfully in '{OUTPUT_FILE}'.")
         else:
-            print("Failed to generate map due to errors.")
+            print("Failed to generate map.")
             
-    except ValueError as e:
+    except (ValueError, FileNotFoundError) as e:
         print(f"Error: {e}")
+        exit(1)
     except Exception as e:
         print(f"Unexpected error: {e}")
+        exit(1)
 
 if __name__ == "__main__":
     main()
