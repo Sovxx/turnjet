@@ -4,6 +4,10 @@ import folium
 from folium import plugins
 from pathlib import Path
 
+TURNS_FILE = 'turns.csv'
+RADIONAVS_FILE = 'resources/radionavs.json'
+WAYPOINTS_FILE = 'resources/waypoints.json'
+
 OUTPUT_FILE = 'navigation_map.html'
 
 def load_csv_data(file_path):
@@ -12,6 +16,7 @@ def load_csv_data(file_path):
         turns = []
         with open(file_path, 'r', encoding='utf-8') as f:
             reader = csv.reader(f)
+            next(reader)  # Skip the header
             for row in reader:
                 if len(row) >= 6:
                     turns.append({
@@ -46,19 +51,18 @@ def create_map_with_points():
     """Create a Leaflet map with colored points"""
     
     # Load data
-    radionavs = load_json_data('resources/radionavs.json')
-    waypoints = load_json_data('resources/waypoints.json')
-    turns = load_csv_data('turns.csv')
+    turns = load_csv_data(TURNS_FILE)
+    radionavs = load_json_data(RADIONAVS_FILE)
+    waypoints = load_json_data(WAYPOINTS_FILE)
     
     if not radionavs and not waypoints:
         print("No data to display on the map.")
         return
     
-    # Calculate map center based on all points
-    all_points = radionavs + waypoints + turns
-    if all_points:
-        center_lat = sum(point['latitude'] for point in all_points) / len(all_points)
-        center_lon = sum(point['longitude'] for point in all_points) / len(all_points)
+    # Calculate map center based on turns points
+    if turns:
+        center_lat = sum(point['latitude'] for point in turns) / len(turns)
+        center_lon = sum(point['longitude'] for point in turns) / len(turns)
     else:
         center_lat, center_lon = 46.2276, 2.2137  # Center of France by default
     
@@ -69,9 +73,16 @@ def create_map_with_points():
         tiles='OpenStreetMap'
     )
 
-    # Add a scale
-    plugins.MeasureControl().add_to(m)
-    
+    # Add red points for aircraft (turns)
+    for turn in turns:
+        folium.CircleMarker(
+            location=[turn['latitude'], turn['longitude']],
+            radius=6,
+            popup=f"Aircraft: {turn['callsign']}<br>Registration: <a href=\"https://www.flightradar24.com/data/aircraft/{turn['registration']}\" target=\"_blank\" >{turn['registration']}</a><br>Time: {turn['timestamp']}",
+            tooltip=f"Aircraft: {turn['callsign']}",
+            color='red',
+        ).add_to(m)
+
     # Add blue points for radionavs
     for radionav in radionavs:
         folium.CircleMarker(
@@ -97,16 +108,6 @@ def create_map_with_points():
             fillColor='green',
             fillOpacity=0.7
         ).add_to(m)
-    
-    # Add yellow points for aircraft (turns)
-    for turn in turns:
-        folium.CircleMarker(
-            location=[turn['latitude'], turn['longitude']],
-            radius=6,
-            popup=f"Aircraft: {turn['callsign']}<br>Registration: <a href=\"https://www.flightradar24.com/data/aircraft/{turn['registration']}\" target=\"_blank\" >{turn['registration']}</a><br>Time: {turn['timestamp']}",
-            tooltip=f"Aircraft: {turn['callsign']}",
-            color='red',
-        ).add_to(m)
 
     # Add a legend
     legend_html = '''
@@ -121,23 +122,17 @@ def create_map_with_points():
     '''
     m.get_root().html.add_child(folium.Element(legend_html))
     
+    # Add a scale
+    plugins.MeasureControl().add_to(m)
+
     # Save the map
     m.save(OUTPUT_FILE)
     
     return m
 
 def main():
-    """Main function"""
     print("Generating navigation map...")
     
-    # Check that directories exist
-    resources_dir = Path('resources')
-    if not resources_dir.exists():
-        print("Error: The 'resources' directory does not exist.")
-        print("Please create the directory and place the radionavs.json and waypoints.json files in it")
-        return
-    
-    # Create the map
     map_obj = create_map_with_points()
     
     if map_obj:
