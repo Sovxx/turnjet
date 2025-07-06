@@ -111,7 +111,7 @@ def create_map_with_points():
     # Add a legend
     legend_html = '''
     <div style="position: fixed; 
-                bottom: 30px; left: 30px; width: 130px; height: 110px; 
+                bottom: 30px; left: 30px; width: 170px; height: 106px; 
                 background-color: white; border:2px solid grey; z-index:9999; 
                 font-size:14px; padding: 10px">
     <p><span style="color:red;">●</span> Turns ('''+str(len(turns))+''')</p>
