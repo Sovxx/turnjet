@@ -4,7 +4,7 @@ import folium
 from folium import plugins
 from pathlib import Path
 
-TURNS_FILE = 'turns.csv'
+TURNS_FILE = 'turnsfake.csv'
 RADIONAVS_FILE = 'resources/radionavs.json'
 WAYPOINTS_FILE = 'resources/waypoints.json'
 
@@ -27,6 +27,8 @@ def load_csv_data(file_path):
                         'latitude': float(row[4]),
                         'longitude': float(row[5])
                     })
+        if not turns:
+            raise ValueError(f"The file {file_path} is empty or has no valid data rows.")
         return turns
     except FileNotFoundError:
         print(f"Error: The file {file_path} was not found.")
@@ -55,16 +57,12 @@ def create_map_with_points():
     radionavs = load_json_data(RADIONAVS_FILE)
     waypoints = load_json_data(WAYPOINTS_FILE)
     
-    if not radionavs and not waypoints:
-        print("No data to display on the map.")
-        return
+    if not turns:
+        raise ValueError(f"{TURNS_FILE} has no data rows. Run main.py for at least 2 hours.")
     
     # Calculate map center based on turns points
-    if turns:
-        center_lat = sum(point['latitude'] for point in turns) / len(turns)
-        center_lon = sum(point['longitude'] for point in turns) / len(turns)
-    else:
-        center_lat, center_lon = 46.2276, 2.2137  # Center of France by default
+    center_lat = sum(point['latitude'] for point in turns) / len(turns)
+    center_lon = sum(point['longitude'] for point in turns) / len(turns)
     
     # Create the map
     m = folium.Map(
@@ -116,8 +114,8 @@ def create_map_with_points():
                 background-color: white; border:2px solid grey; z-index:9999; 
                 font-size:14px; padding: 10px">
     <p><span style="color:red;">●</span> Turns ('''+str(len(turns))+''')</p>
-    <p><span style="color:blue;">●</span> Radionavs</p>
-    <p><span style="color:green;">●</span> Waypoints</p>
+    <p><span style="color:blue;">●</span> Radionavs ('''+str(len(radionavs))+''')</p>
+    <p><span style="color:green;">●</span> Waypoints ('''+str(len(waypoints))+''')</p>
     </div>
     '''
     m.get_root().html.add_child(folium.Element(legend_html))
@@ -126,17 +124,28 @@ def create_map_with_points():
     plugins.MeasureControl().add_to(m)
 
     # Save the map
-    m.save(OUTPUT_FILE)
+    try:
+        m.save(OUTPUT_FILE)
+        return m
+    except Exception as e:
+        print(f"Error saving map: {e}")
+        return None
     
-    return m
-
 def main():
     print("Generating navigation map...")
     
-    map_obj = create_map_with_points()
-    
-    if map_obj:
-        print(f"Map generated successfully in '{OUTPUT_FILE}'.")
+    try:
+        map_obj = create_map_with_points()
+        
+        if map_obj:
+            print(f"Map generated successfully in '{OUTPUT_FILE}'.")
+        else:
+            print("Failed to generate map due to errors.")
+            
+    except ValueError as e:
+        print(f"Error: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
 
 if __name__ == "__main__":
     main()
